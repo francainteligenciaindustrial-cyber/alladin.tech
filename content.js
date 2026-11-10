@@ -65,7 +65,7 @@ ${items.join('\n')}
     const title = str(b.title, 140); if (title.length < 8) throw new Error('O título precisa ter pelo menos 8 caracteres.');
     let slug = slugify(b.slug || title); if (!slug) throw new Error('Endereço inválido.');
     if (db.prepare('SELECT id FROM posts WHERE slug=? AND id<>?').get(slug, id || 0)) slug += '-' + Date.now().toString(36).slice(-3);
-    const f = { slug, title, excerpt: str(b.excerpt, 300), body: String(b.body || '').slice(0, 60000), cover: /^\/(uploads|img)\/[\w\-./]+$/.test(b.cover || '') ? b.cover : '', published: b.published === false ? 0 : 1 };
+    const f = { slug, title, excerpt: str(b.excerpt, 300), body: String(b.body || '').slice(0, 60000), cover: (/^\/(uploads|img)\/[\w\-./]+$/.test(b.cover || '') || require('./db').BLOB_URL_RE.test(b.cover || '')) ? b.cover : '', published: b.published === false ? 0 : 1 };
     if (id) { db.prepare("UPDATE posts SET slug=?,title=?,excerpt=?,body=?,cover=?,published=?,updated_at=datetime('now','localtime') WHERE id=?").run(f.slug, f.title, f.excerpt, f.body, f.cover, f.published, id); return id; }
     return Number(db.prepare('INSERT INTO posts(slug,title,excerpt,body,cover,published,author) VALUES(?,?,?,?,?,?,?)').run(f.slug, f.title, f.excerpt, f.body, f.cover, f.published, author || '').lastInsertRowid);
   }

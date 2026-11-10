@@ -1,19 +1,23 @@
 /* Aladdin Tech — servidor da loja (API + arquivos estáticos)
  * Banco: SQLite embutido do Node (node:sqlite), arquivo em ./data/loja.db
+ *        ou Turso na nuvem (Vercel) — ver db.js
  */
+// na Vercel o relógio é UTC: datas e horários seguem o fuso da loja (Cuiabá, UTC−4)
+if (process.env.VERCEL && !process.env.TZ_KEEP) process.env.TZ = process.env.STORE_TZ || 'America/Cuiaba';
 const express = require('express');
 const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { DatabaseSync } = require('node:sqlite');
+const store = require('./db');
+const jobs = require('./jobs');
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(__dirname, 'public', 'uploads');
-for (const d of [DATA_DIR, UPLOAD_DIR, path.join(UPLOAD_DIR, 'produtos'), path.join(UPLOAD_DIR, 'avaliacoes'), path.join(UPLOAD_DIR, 'loja'), path.join(UPLOAD_DIR, 'clientes')]) fs.mkdirSync(d, { recursive: true });
+if (!store.REMOTE_DB || !store.SERVERLESS) for (const d of [DATA_DIR, UPLOAD_DIR, path.join(UPLOAD_DIR, 'produtos'), path.join(UPLOAD_DIR, 'avaliacoes'), path.join(UPLOAD_DIR, 'loja'), path.join(UPLOAD_DIR, 'clientes')]) fs.mkdirSync(d, { recursive: true });
 
-const db = new DatabaseSync(path.join(DATA_DIR, 'loja.db'));
+const db = store.openDb(path.join(DATA_DIR, 'loja.db'));
 db.exec(`
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
@@ -68,9 +72,11 @@ CREATE TABLE IF NOT EXISTS settings ( key TEXT PRIMARY KEY, value TEXT );
 `);
 
 // migrações (colunas novas em bancos existentes)
+const colCache = new Map();
 function addCol(table, col, def) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
-  if (!cols.includes(col)) { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); return true; }
+  if (!colCache.has(table)) colCache.set(table, new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name)));
+  const cols = colCache.get(table);
+  if (!cols.has(col)) { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`); cols.add(col); return true; }
   return false;
 }
 [['promo_price', 'REAL DEFAULT 0'], ['promo_start', "TEXT DEFAULT ''"], ['promo_end', "TEXT DEFAULT ''"], ['sku', "TEXT DEFAULT ''"],
@@ -277,10 +283,13 @@ function saveImage(dataUrl, sub, maxBytes) {
   else if (buf.slice(0, 4).toString() === 'RIFF' && buf.slice(8, 12).toString() === 'WEBP') ext = 'webp';
   if (!ext) throw new Error('Formato não suportado. Use JPG, PNG ou WEBP.');
   const name = Date.now().toString(36) + crypto.randomBytes(6).toString('hex') + '.' + ext;
+  if (store.REMOTE_FILES) return store.blobPut(`uploads/${sub}/${name}`, buf, ext === 'jpg' ? 'image/jpeg' : 'image/' + ext);
   fs.writeFileSync(path.join(UPLOAD_DIR, sub, name), buf);
   return `/uploads/${sub}/${name}`;
 }
+const isUpload = (u) => typeof u === 'string' && (u.startsWith('/uploads/') || store.BLOB_URL_RE.test(u));
 function deleteUpload(url) {
+  if (typeof url === 'string' && store.BLOB_URL_RE.test(url)) return store.blobDel(url);
   if (typeof url !== 'string' || !url.startsWith('/uploads/')) return;
   const f = path.normalize(path.join(__dirname, 'public', url));
   if (f.startsWith(UPLOAD_DIR)) { fs.rm(f, { force: true }, () => {}); fs.rm(f.replace(/\.(jpe?g|png)$/i, '.webp'), { force: true }, () => {}); }
@@ -293,7 +302,7 @@ function allow(key, max, windowMs) {
   if (!h || h.reset < now) { hits.set(key, { n: 1, reset: now + windowMs }); return true; }
   h.n++; return h.n <= max;
 }
-setInterval(() => { const now = Date.now(); for (const [k, v] of hits) if (v.reset < now) hits.delete(k); }, 60000).unref();
+jobs.every('limpa-limitador', 60000, () => { const now = Date.now(); for (const [k, v] of hits) if (v.reset < now) hits.delete(k); });
 const ipOf = (req) => req.ip || req.socket.remoteAddress || '';
 function limit(name, max, windowMs, msg) {
   return (req, res, next) => allow(name + ':' + ipOf(req), max, windowMs) ? next()
@@ -381,15 +390,21 @@ const OWNER_KEYS = ['mp_access_token', 'mp_webhook_secret', 'online_payments', '
   'ml_client_id', 'ml_client_secret', 'ml_tokens', 'shopee_partner_id', 'shopee_partner_key', 'shopee_shop_id', 'shopee_access_token',
   'google_places_key', 'google_place_id', 'wa_provider', 'wa_token', 'wa_phone_id', 'wa_template', 'wa_template_lang', 'zapi_instance', 'zapi_token', 'zapi_client_token'];
 const mask = (v) => v ? '••••••••' + String(v).slice(-4) : '';
-const UPLOAD_URL = (u) => typeof u === 'string' && /^\/uploads\/[a-z]+\/[a-z0-9]+\.(jpg|png|webp)$/.test(u);
+const UPLOAD_URL = (u) => typeof u === 'string' && (/^\/uploads\/[a-z]+\/[a-z0-9]+\.(jpg|png|webp)$/.test(u) || store.BLOB_URL_RE.test(u));
 
 (function seed() {
   const s = getSettings();
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) if (!(k in s)) setSetting(k, v);
   if (db.prepare('SELECT COUNT(*) c FROM users').get().c === 0) {
     // migra a senha antiga (se existir) para o usuário dono
+    // na nuvem nunca existe senha padrão conhecida: usa ADMIN_INITIAL_PASSWORD ou gera uma aleatória (aparece só no log privado da Vercel)
+    let initial = 'aladdin2026';
+    if (store.SERVERLESS) {
+      initial = process.env.ADMIN_INITIAL_PASSWORD || ('Aladdin-' + crypto.randomBytes(6).toString('base64url'));
+      if (!process.env.ADMIN_INITIAL_PASSWORD) console.log('Senha provisória do usuário admin: ' + initial);
+    }
     db.prepare('INSERT INTO users(name,username,password,role,must_change) VALUES(?,?,?,?,1)')
-      .run('Dono', 'admin', s.admin_password || hashPw('aladdin2026'), 'owner');
+      .run('Dono', 'admin', s.admin_password || hashPw(initial), 'owner');
   }
   if (db.prepare('SELECT COUNT(*) c FROM categories').get().c === 0) {
     const cats = [['iPhone', 'iphone', 'iphone'], ['MacBook', 'macbook', 'macbook'], ['iPad', 'ipad', 'ipad'],
@@ -480,6 +495,14 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
+// tarefas automáticas: na nuvem, rodam em segundo plano a cada acesso
+app.use(jobs.trigger);
+app.get('/api/cron', async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || req.headers.authorization !== 'Bearer ' + secret) return res.status(401).json({ error: 'Não autorizado.' });
+  res.json({ ok: true, ran: await jobs.runDue(true) });
+});
+
 // compressão Brotli/Gzip (texto, JSON, CSS, JS)
 app.use(compression({ threshold: 1024 }));
 
@@ -493,7 +516,7 @@ app.use((req, res, next) => {
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Content-Security-Policy', [
     "default-src 'self'", "script-src 'self' https://www.googletagmanager.com https://connect.facebook.net", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com", "img-src 'self' data: blob: https://*.googleusercontent.com https://i.ytimg.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://www.facebook.com", "connect-src 'self' https://viacep.com.br https://nominatim.openstreetmap.org https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.facebook.com https://connect.facebook.net",
+    "font-src 'self' https://fonts.gstatic.com", "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://*.googleusercontent.com https://i.ytimg.com https://www.google-analytics.com https://*.google-analytics.com https://www.googletagmanager.com https://www.facebook.com", "connect-src 'self' https://viacep.com.br https://nominatim.openstreetmap.org https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.facebook.com https://connect.facebook.net",
     "frame-src 'self' https://www.youtube-nocookie.com https://www.instagram.com https://www.tiktok.com https://www.facebook.com https://maps.google.com https://www.google.com https://*.google.com https://www.google.com.br https://maps.google.com.br", "object-src 'none'", "base-uri 'self'",
     "form-action 'self'", "frame-ancestors 'none'"
   ].join('; '));
@@ -575,7 +598,7 @@ function auth(perm) {
     next();
   };
 }
-setInterval(() => db.prepare('DELETE FROM sessions WHERE expires<?').run(Date.now()), 3600000).unref();
+jobs.every('limpa-sessoes', 3600000, () => db.prepare('DELETE FROM sessions WHERE expires<?').run(Date.now()));
 
 app.post('/api/admin/login', limit('login-ip', 20, 15 * 60000), (req, res) => {
   const username = str((req.body || {}).username, 60).toLowerCase(), password = String((req.body || {}).password || '');
@@ -874,7 +897,7 @@ app.get('/api/account/orders', customerAuth, (req, res) => {
   const reviewed = db.prepare('SELECT product_id FROM reviews WHERE customer_id=?').all(req.customer.id).map((r) => r.product_id);
   res.json({ orders, slugs, reviewed });
 });
-setInterval(() => db.prepare('DELETE FROM customer_sessions WHERE expires<?').run(Date.now()), 3600000).unref();
+jobs.every('limpa-sessoes-clientes', 3600000, () => db.prepare('DELETE FROM customer_sessions WHERE expires<?').run(Date.now()));
 
 /* ---- públicos ---- */
 app.get('/api/settings', (req, res) => {
@@ -1214,7 +1237,7 @@ async function checkAlerts(req) {
     }
   } finally { alertBusy = false; }
 }
-setInterval(() => checkAlerts().catch(() => {}), 10 * 60000).unref();
+jobs.every('alertas-preco', 10 * 60000, () => checkAlerts());
 
 /* ---- frete em tempo real ---- */
 app.post('/api/shipping/quote', limit('ship-quote', 60, 600000), async (req, res) => {
@@ -1254,7 +1277,7 @@ app.post('/api/cart/stop', limit('cart-stop', 20, 600000), (req, res) => {
   const r = db.prepare('UPDATE carts SET consent=0 WHERE token=?').run(str((req.body || {}).t, 64));
   res.json({ ok: r.changes > 0 });
 });
-setInterval(() => integ.cartJob(lastBase || process.env.PUBLIC_URL).catch(() => {}), 5 * 60000).unref();
+jobs.every('carrinho-abandonado', 5 * 60000, () => integ.cartJob(lastBase || process.env.PUBLIC_URL));
 
 /* ---- painel: carrinhos abandonados ---- */
 app.get('/api/admin/carts', auth('orders'), (req, res) => {
@@ -1477,7 +1500,7 @@ app.get('/api/admin/products', auth('products'), (req, res) => {
     FROM products p LEFT JOIN categories c ON c.id=p.category_id ORDER BY p.id DESC`).all().map(productAdmin));
 });
 function productFields(b) {
-  const imgs = (Array.isArray(b.images) ? b.images : []).filter((u) => typeof u === 'string' && u.startsWith('/uploads/')).slice(0, 10);
+  const imgs = (Array.isArray(b.images) ? b.images : []).filter(isUpload).slice(0, 10);
   const specs = (Array.isArray(b.specs) ? b.specs : []).map((s) => ({ k: str(s.k, 60), v: str(s.v, 200) })).filter((s) => s.k).slice(0, 40);
   const options = (Array.isArray(b.options) ? b.options : []).map((o) => ({ name: str(o.name, 40),
     values: (Array.isArray(o.values) ? o.values : []).map((v) => str(v, 40)).filter(Boolean).slice(0, 20) })).filter((o) => o.name && o.values.length).slice(0, 6);
@@ -2005,8 +2028,9 @@ app.post('/api/admin/reset', limit('staff-reset', 10, 600000), (req, res) => {
 });
 
 /* ---- foto do consultor ---- */
-const STAFF_PHOTO = `COALESCE(NULLIF(u.photo,''), (SELECT c.avatar FROM customers c WHERE c.id=u.customer_id
-  OR (u.customer_id IS NULL AND u.email<>'' AND lower(c.email)=lower(u.email) AND c.email_verified=1) ORDER BY c.id=u.customer_id DESC LIMIT 1), '')`;
+// compatível com o SQLite do Node e com o do Turso (3.45): sem coluna externa no ORDER BY de subconsulta
+const STAFF_PHOTO = `COALESCE(NULLIF(u.photo,''), (SELECT c.avatar FROM customers c WHERE c.id=u.customer_id),
+  (SELECT c.avatar FROM customers c WHERE u.customer_id IS NULL AND u.email<>'' AND lower(c.email)=lower(u.email) AND c.email_verified=1 LIMIT 1), '')`;
 
 /* ---- gestão: financeiro, estoque por IMEI, Mercado Livre e Shopee ---- */
 const ops = require('./ops')({ db, J, round2 });
@@ -2052,7 +2076,7 @@ app.post('/api/shopee/notify', async (req, res) => {
   catch (e) { console.error('Shopee notify', e.message); }
 });
 app.post('/api/admin/channels/sync', auth(), ownerOnly2, async (req, res) => { try { res.json({ ok: true, synced: await channels.syncJob() }); } catch (e) { res.status(400).json({ error: e.message }); } });
-setInterval(() => channels.syncJob().catch((e) => console.error('canais', e.message)), 2 * 60000).unref();
+jobs.every('canais-estoque', 2 * 60000, () => channels.syncJob());
 
 /* ---- laudo técnico + assistência técnica ---- */
 const service = require('./service')({ db, getSettings, J, str, round2, mailer, wa: extras });
@@ -2124,7 +2148,7 @@ app.post('/api/admin/customers/:id/cashback', auth(), (req, res) => {
 app.get('/api/admin/reminders/log', auth('promos'), (req, res) => res.json(db.prepare('SELECT * FROM reminders_sent ORDER BY sent_at DESC LIMIT 200').all()));
 const clubJobs = () => { const base = process.env.PUBLIC_URL || lastBase || ''; try { club.expire(); } catch (e) { console.error('clube', e.message); }
   club.birthdayJob(base).catch((e) => console.error('aniversário', e.message)); club.remindersJob(base).catch((e) => console.error('lembretes', e.message)); };
-setInterval(clubJobs, 6 * 3600000).unref(); setTimeout(clubJobs, 90000).unref();
+jobs.every('clube-lembretes', 6 * 3600000, clubJobs, { firstDelay: 90000 });
 
 /* ---- vitrine (catálogo), guias, avaliações do Google ---- */
 const content = require('./content')({ db, getSettings, J, str, effectivePrice: (p) => effectivePrice(p), secret: (k) => (k === 'google_places_key' && process.env.GOOGLE_PLACES_KEY) || getSettings()[k] || '' });
@@ -2158,8 +2182,7 @@ app.post('/api/admin/google-reviews/test', auth(), async (req, res) => {
 /* ---- troca garantida + pré-venda ---- */
 const tradein = require('./tradein')({ db, getSettings, J, round2, mailer, wa: extras });
 const preorder = require('./preorder')({ db, getSettings, J, str, round2, mailer, wa: extras });
-setInterval(() => tradein.job(process.env.PUBLIC_URL || lastBase || '').catch((e) => console.error('troca job', e.message)), 6 * 3600000).unref();
-setTimeout(() => tradein.job(process.env.PUBLIC_URL || lastBase || '').catch(() => {}), 60000).unref();
+jobs.every('troca-garantida', 6 * 3600000, () => tradein.job(process.env.PUBLIC_URL || lastBase || ''), { firstDelay: 60000 });
 app.get('/api/account/trade-plans', customerAuth, (req, res) => res.json(tradein.forCustomer(req.customer.id)));
 app.get('/api/admin/trade-plans', auth('orders'), (req, res) => res.json(tradein.search(str(req.query.q, 60), str(req.query.phase, 20))));
 app.post('/api/admin/trade-plans/:id/redeem', auth('orders'), (req, res) => {
@@ -2232,7 +2255,7 @@ app.post('/api/reserve', limit('reserve', 6, 3600000, 'Muitas reservas a partir 
     res.json({ ok: true, code, until: row.reserve_until, hours });
   } catch (e) { try { db.exec('ROLLBACK'); } catch {} res.status(400).json({ error: e.message }); }
 });
-setInterval(() => { try { extras.reservationJob(process.env.PUBLIC_URL || lastBase || '', (o) => { extras.notifyOrder(o.code, 'cancelado', process.env.PUBLIC_URL || lastBase || '', { reserveExpired: true }).catch(() => {}); }); } catch (e) { console.error('reservas', e.message); } }, 5 * 60000).unref();
+jobs.every('reservas', 5 * 60000, () => { try { extras.reservationJob(process.env.PUBLIC_URL || lastBase || '', (o) => { extras.notifyOrder(o.code, 'cancelado', process.env.PUBLIC_URL || lastBase || '', { reserveExpired: true }).catch(() => {}); }); } catch (e) { console.error('reservas', e.message); } });
 
 /* ---- WhatsApp: texto pronto (manual) e teste da integração ---- */
 app.get('/api/admin/orders/:id/wa', auth('orders'), (req, res) => {
@@ -2473,6 +2496,7 @@ app.get('/api/admin/webp/pending', auth(), (req, res) => {
   res.json({ total: all.length, pending: pending.slice(0, 400).map((x) => x.url), pending_count: pending.length });
 });
 app.post('/api/admin/webp', auth(), (req, res) => {
+  if (store.REMOTE_FILES) return res.status(400).json({ error: 'Na nuvem as fotos já são entregues pelo Vercel Blob.' });
   if (!['owner', 'manager'].includes(req.user.role) && !can(req.user, 'products')) return res.status(403).json({ error: 'Sem permissão.' });
   const b = req.body || {}, f = urlToFile(b.url);
   if (!f || !fs.existsSync(f)) return res.status(400).json({ error: 'Imagem inválida.' });
@@ -2505,8 +2529,15 @@ app.use((req, res, next) => {
 
 /* backup automático do banco: cópia consistente (VACUUM INTO) 1x por dia, guarda os 14 últimos */
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
-fs.mkdirSync(BACKUP_DIR, { recursive: true });
+if (!store.REMOTE_DB) fs.mkdirSync(BACKUP_DIR, { recursive: true });
 const BACKUP_RE = /^loja-\d{4}-\d{2}-\d{2}(-\d{6})?\.db$/;
+// cópia completa em JSON (todas as tabelas) — usada na nuvem
+function exportJson() {
+  const out = { exported_at: new Date().toISOString(), tables: {} };
+  for (const t of db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_litestream%' AND name NOT LIKE 'libsql_%'").all())
+    out.tables[t.name] = db.prepare(`SELECT * FROM "${t.name.replace(/"/g, '')}"`).all();
+  return out;
+}
 function backupDb(force) {
   const d = new Date(), p = (n) => String(n).padStart(2, '0'), day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
   const name = force ? `loja-${day}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.db` : `loja-${day}.db`;
@@ -2517,15 +2548,20 @@ function backupDb(force) {
   return name;
 }
 const backupSafe = () => { try { backupDb(); } catch (e) { console.error('backup:', e.message); } };
-setTimeout(backupSafe, 20000).unref(); setInterval(backupSafe, 3600000).unref();
+if (!store.REMOTE_DB) jobs.every('backup', 3600000, backupSafe, { firstDelay: 20000 });
 app.get('/api/admin/backups', auth(), ownerOnly2, (req, res) => {
+  if (store.REMOTE_DB) { const d = new Date(), p = (n) => String(n).padStart(2, '0');
+    return res.json([{ name: `loja-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.json`, size: 0, created_at: d.toISOString(), cloud: true }]); }
   res.json(fs.readdirSync(BACKUP_DIR).filter((n) => BACKUP_RE.test(n)).sort().reverse()
     .map((n) => { const st = fs.statSync(path.join(BACKUP_DIR, n)); return { name: n, size: st.size, created_at: st.mtime.toISOString() }; }));
 });
 app.post('/api/admin/backups', auth(), ownerOnly2, limit('backup-now', 10, 3600000), (req, res) => {
+  if (store.REMOTE_DB) return res.json({ ok: true, name: 'nuvem', note: 'Na nuvem o Turso guarda o histórico automaticamente. Use Baixar para levar uma cópia completa.' });
   try { const n = backupDb(true); audit(req, 'backup_manual', n || ''); res.json({ ok: true, name: n }); } catch (e) { res.status(500).json({ error: 'Falha no backup: ' + e.message }); }
 });
 app.get('/api/admin/backups/:name', auth(), ownerOnly2, (req, res) => {
+  if (store.REMOTE_DB) { const n = String(req.params.name); if (!/^loja-\d{4}-\d{2}-\d{2}\.json$/.test(n)) return res.status(404).json({ error: 'Backup não encontrado.' });
+    audit(req, 'backup_baixado', n); res.setHeader('Content-Disposition', `attachment; filename="${n}"`); return res.type('application/json').send(JSON.stringify(exportJson())); }
   const n = String(req.params.name); if (!BACKUP_RE.test(n) || !fs.existsSync(path.join(BACKUP_DIR, n))) return res.status(404).json({ error: 'Backup não encontrado.' });
   audit(req, 'backup_baixado', n); res.download(path.join(BACKUP_DIR, n), n);
 });
@@ -2558,7 +2594,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Erro interno. Tente novamente.' });
 });
 
-app.listen(PORT, () => {
+module.exports = app;
+if (!store.SERVERLESS) app.listen(PORT, () => {
   console.log(`\n  Aladdin Tech no ar: http://localhost:${PORT}`);
   console.log(`  Painel: http://localhost:${PORT}/admin  (usuario: admin / senha inicial: aladdin2026)\n`);
 });

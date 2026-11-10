@@ -94,3 +94,36 @@ Segurança: chaves secretas sempre mascaradas no painel e chaves exclusivas do D
 | Página e ordenação | Página `/mais-vendidos` com abas por categoria, seção na página inicial, item no menu e ordenação “Mais vendidos” / “Melhor avaliados” na loja. |
 | Vendidos e notas | “**+N vendidos**” em faixas (+5, +10, +25, +50, +100…), como Shopee e Mercado Livre. Nota com estrelas e número de avaliações em cada card e na página do produto. |
 | Vendas antes do site | Campo **Vendas antes do site** no cadastro do produto, para incluir o histórico real da loja. |
+
+## Publicar na Vercel (Turso + Vercel Blob)
+
+O mesmo código roda em dois modos:
+
+| Modo | Banco | Fotos | Tarefas automáticas |
+|---|---|---|---|
+| Computador ou servidor próprio (`npm start`) | `data/loja.db` (SQLite do Node) | `public/uploads` | `setInterval` |
+| Vercel (variável `VERCEL`, definida pela própria Vercel) | Turso (`TURSO_DATABASE_URL`) | Vercel Blob (`BLOB_READ_WRITE_TOKEN`) | A cada acesso, em segundo plano, e pelo agendamento diário em `/api/cron` |
+
+**Como funciona:** `db.js` mantém a interface síncrona do SQLite (`db.prepare().get/all/run`). Na nuvem, um *worker* (`db-worker.js`) executa as consultas no Turso e a linha principal aguarda a resposta. As consultas usam SQL compatível com o SQLite 3.45 do Turso.
+
+**Passo a passo:**
+1. Na Vercel, importe o repositório do GitHub (*Add New → Project*).
+2. Em *Storage*, crie e conecte ao projeto:
+   - **Turso** (Marketplace), que cria `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN`.
+   - **Blob**, que cria `BLOB_READ_WRITE_TOKEN`.
+3. Em *Settings → Environment Variables*, adicione:
+   - `CRON_SECRET`: uma senha longa qualquer, usada pelo agendamento diário.
+   - `PUBLIC_URL`: o endereço do site, por exemplo `https://aladdintech.com.br`.
+   - `ADMIN_INITIAL_PASSWORD`: opcional. Só é usada se o banco estiver vazio. Sem ela, a senha provisória do `admin` aparece em *Logs*.
+4. Leve os dados do computador para a nuvem: produtos, equipe, configurações e fotos.
+   ```
+   $env:TURSO_DATABASE_URL="libsql://..."; $env:TURSO_AUTH_TOKEN="..."; $env:BLOB_READ_WRITE_TOKEN="vercel_blob_rw_..."
+   node tools/migrar-para-nuvem.js
+   ```
+   A ferramenta só roda num banco da nuvem vazio. Para copiar de novo, use `--substituir`.
+5. Faça um novo *Deploy*.
+
+**Observações:**
+- O plano Hobby da Vercel é só para uso pessoal, não comercial. Uma loja precisa do plano Pro.
+- No plano Hobby, o agendamento roda 1 vez por dia. As demais tarefas rodam conforme o site recebe visitas.
+- **Backups:** o Turso guarda o histórico do banco. Em *Painel → Segurança*, o Dono baixa uma cópia completa (JSON) na hora.

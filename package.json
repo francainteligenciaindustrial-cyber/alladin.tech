@@ -9,11 +9,17 @@
     "dev": "node --watch server.js"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": "24.x"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "@vercel/blob": "^2.8.2",
+    "@vercel/functions": "^3.10.3",
     "compression": "^1.8.2",
     "express": "^4.21.2",
     "nodemailer": "^10.2.1"
+  },
+  "overrides": {
+    "zod": "4.6.7"
   }
 }

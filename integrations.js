@@ -188,11 +188,11 @@ function createIntegrations(ctx) {
   }
   // notas em processamento: consulta a cada 2 minutos
   let nfeBusy = false;
-  setInterval(async () => {
+  require('./jobs').every('notas-fiscais', 2 * 60000, async () => {
     if (nfeBusy || !nfeEnabled()) return; nfeBusy = true;
     try { for (const o of db.prepare("SELECT id FROM orders WHERE nfe_status='processando'").all()) await refreshNfe(o.id, process.env.PUBLIC_URL).catch(() => {}); }
     finally { nfeBusy = false; }
-  }, 2 * 60000).unref();
+  });
 
   /* =====================================================================
      3) CARRINHO ABANDONADO

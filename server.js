@@ -495,6 +495,8 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
+// na nuvem: guarda a chave temporária do Vercel Blob que chega em cada acesso
+app.use((req, res, next) => { const t = req.headers['x-vercel-oidc-token']; if (t) store.setOidc(String(t)); next(); });
 // tarefas automáticas: na nuvem, rodam em segundo plano a cada acesso
 app.use(jobs.trigger);
 app.get('/api/cron', async (req, res) => {

@@ -25,12 +25,13 @@ async function handle(m) {
       return 'https://teste.public.blob.vercel-storage.com/' + m.pathname;
     }
     const { put } = require('@vercel/blob');
-    const r = await put(m.pathname, Buffer.from(m.data), { access: 'public', contentType: m.contentType, addRandomSuffix: false, token: blobToken });
+    const cred = blobToken ? { token: blobToken } : { oidcToken: m.oidcToken, storeId: m.storeId };
+    const r = await put(m.pathname, Buffer.from(m.data), { access: 'public', contentType: m.contentType, addRandomSuffix: false, ...cred });
     return r.url;
   }
   if (m.op === 'blobDel') {
     if (blobMockDir) return null;
-    await require('@vercel/blob').del(m.url, { token: blobToken });
+    await require('@vercel/blob').del(m.url, blobToken ? { token: blobToken } : { oidcToken: m.oidcToken, storeId: m.storeId });
     return null;
   }
   const c = getClient();

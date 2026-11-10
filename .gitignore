@@ -15,3 +15,6 @@ public/uploads/
 # Material bruto (as versões usadas no site já estão em public/img)
 fotos-para-o-site/
 WhatsApp Image*.jpeg
+
+.vercel
+.env*

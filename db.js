@@ -13,7 +13,7 @@
 const path = require('path');
 
 const REMOTE_DB = !!process.env.TURSO_DATABASE_URL;
-const REMOTE_FILES = !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_MOCK_DIR);
+const REMOTE_FILES = !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID || process.env.BLOB_MOCK_DIR);
 const SERVERLESS = !!process.env.VERCEL;
 
 let bridgeCall = null;
@@ -69,9 +69,13 @@ function openDb(localFile) {
   return new DatabaseSync(localFile);
 }
 
-// arquivos na nuvem (Vercel Blob)
-const blobPut = (pathname, buf, contentType) => bridge()({ op: 'blobPut', pathname, data: new Uint8Array(buf), contentType });
-const blobDel = (url) => { try { bridge()({ op: 'blobDel', url }); } catch (e) { console.error('blob del', e.message); } };
+// arquivos na nuvem (Vercel Blob). Modo novo: chave temporária (OIDC) que a Vercel envia em cada acesso
+// (cabeçalho x-vercel-oidc-token) — o servidor guarda a mais recente e entrega a cada envio.
+let oidc = '';
+const setOidc = (t) => { if (t) oidc = t; };
+const auth = () => ({ oidcToken: oidc || process.env.VERCEL_OIDC_TOKEN || '', storeId: process.env.BLOB_STORE_ID || '' });
+const blobPut = (pathname, buf, contentType) => bridge()({ op: 'blobPut', pathname, data: new Uint8Array(buf), contentType, ...auth() });
+const blobDel = (url) => { try { bridge()({ op: 'blobDel', url, ...auth() }); } catch (e) { console.error('blob del', e.message); } };
 const BLOB_URL_RE = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/uploads\/[\w\-./]+$/i;
 
-module.exports = { openDb, REMOTE_DB, REMOTE_FILES, SERVERLESS, blobPut, blobDel, BLOB_URL_RE, bridge };
+module.exports = { openDb, REMOTE_DB, REMOTE_FILES, SERVERLESS, blobPut, blobDel, setOidc, BLOB_URL_RE, bridge };

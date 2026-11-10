@@ -16,6 +16,14 @@ const { DatabaseSync } = require('node:sqlite');
 const { createClient } = require('@libsql/client');
 
 const ROOT = path.join(__dirname, '..');
+// lê as chaves baixadas com "vercel env pull" (.env.local), sem mostrar nada na tela
+for (const envFile of ['.env.local', '.env']) {
+  const p = path.join(ROOT, envFile); if (!fs.existsSync(p)) continue;
+  for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line); if (!m || process.env[m[1]]) continue;
+    process.env[m[1]] = m[2].replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+  }
+}
 const SRC = process.env.SOURCE_DB || path.join(ROOT, 'data', 'loja.db');
 const UPLOADS = path.join(ROOT, 'public', 'uploads');
 const OFFSET = process.env.STORE_UTC_OFFSET || '-4 hours';
@@ -24,12 +32,13 @@ const REPLACE = process.argv.includes('--substituir');
 async function putFile(rel, buf, type) {
   if (process.env.BLOB_MOCK_DIR) { const f = path.join(process.env.BLOB_MOCK_DIR, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, buf); return 'https://teste.public.blob.vercel-storage.com/' + rel; }
   const { put } = require('@vercel/blob');
-  return (await put(rel, buf, { access: 'public', contentType: type, addRandomSuffix: false, allowOverwrite: true, token: process.env.BLOB_READ_WRITE_TOKEN })).url;
+  const cred = process.env.BLOB_READ_WRITE_TOKEN ? { token: process.env.BLOB_READ_WRITE_TOKEN } : {}; // sem chave antiga, o SDK usa a chave temporária (OIDC) do .env.local
+  return (await put(rel, buf, { access: 'public', contentType: type, addRandomSuffix: false, allowOverwrite: true, ...cred })).url;
 }
 
 (async () => {
   if (!process.env.TURSO_DATABASE_URL) throw new Error('Defina TURSO_DATABASE_URL e TURSO_AUTH_TOKEN (Vercel → Storage → Turso → .env).');
-  if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.BLOB_MOCK_DIR) throw new Error('Defina BLOB_READ_WRITE_TOKEN (Vercel → Storage → Blob → .env).');
+  if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.BLOB_STORE_ID && !process.env.BLOB_MOCK_DIR) throw new Error('Conecte o Blob ao projeto na Vercel e rode "vercel env pull".');
   if (!fs.existsSync(SRC)) throw new Error('Banco local não encontrado: ' + SRC);
 
   const src = new DatabaseSync(SRC, { readOnly: true });

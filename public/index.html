@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Aladdin Tech — Referência em Upgrade</title>
+  <meta name="description" content="iPhone, MacBook, iPad, Apple Watch, AirPods, JBL, PlayStation e acessórios com procedência, garantia e atendimento especializado. Entrega expressa ou retire na loja.">
+  <meta name="theme-color" content="#09090a">
+  <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Aladdin Tech">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Manrope:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/store-v2.css">
+  <link rel="stylesheet" href="/css/extras.css">
+  <link rel="stylesheet" href="/css/herofx.css">
+  <link rel="stylesheet" href="/css/navfx.css">
+  <link rel="stylesheet" href="/css/rank.css">
+</head>
+<body>
+  <div class="site-tree" aria-hidden="true"><img src="/img/arvore-deco.png" alt=""></div>
+  <div class="announce" id="announce"></div>
+
+  <header class="header" id="header">
+    <div class="wrap header-in">
+      <button class="icon-btn only-m" id="menuBtn" aria-label="Menu"></button>
+      <a href="/" data-link class="brand" aria-label="Aladdin Tech — início">
+        <span class="brand-lamp"></span>
+        <span class="brand-text"><span><b>Aladdin</b> Tech</span><small>Referência em Upgrade</small></span>
+      </a>
+      <nav class="nav" id="nav"></nav>
+      <div class="header-actions">
+        <button class="icon-btn" id="searchBtn" aria-label="Buscar"></button>
+        <a href="/lista-de-desejos" data-link class="icon-btn cart-btn" id="wishBtn" aria-label="Lista de desejos"><span class="cart-count" id="wishCount">0</span></a>
+        <button class="icon-btn acct-btn" id="acctBtn" aria-label="Minha conta"></button>
+        <button class="icon-btn cart-btn" id="cartBtn" aria-label="Sacola">
+          <span class="cart-count" id="cartCount">0</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="mobile-nav" id="mobileNav"></div>
+
+  <div class="search-layer" id="searchLayer">
+    <div class="wrap">
+      <div class="search-box">
+        <span class="search-ico"></span>
+        <input id="searchInput" type="search" placeholder="Buscar iPhone, MacBook, JBL, PlayStation…" autocomplete="off">
+        <button class="icon-btn" id="searchClose" aria-label="Fechar busca"></button>
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+  </div>
+
+  <main id="app" tabindex="-1"></main>
+
+  <footer class="footer" id="footer"></footer>
+
+  <!-- sacola -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="cartDrawer" aria-label="Sacola de compras">
+    <div class="drawer-head">
+      <h3>Sua sacola</h3>
+      <button class="icon-btn" id="cartClose" aria-label="Fechar"></button>
+    </div>
+    <div class="drawer-body" id="cartBody"></div>
+    <div class="drawer-foot" id="cartFoot"></div>
+  </aside>
+
+  <!-- consultor -->
+  <button class="concierge-btn" id="conciergeBtn" aria-label="Falar com um consultor">
+    <span class="concierge-pulse"></span>
+  </button>
+  <div class="concierge" id="concierge" role="dialog" aria-label="Fale com um consultor"></div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/js/icons.js"></script>
+  <script src="/js/devices.js"></script>
+  <script src="/js/track.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+/* Aladdin Tech — animação do topo (fina, tecnológica, minimalista) */
+
+/* rede de partículas douradas */
+.hero-net { position: absolute; inset: 0; z-index: -1; pointer-events: none; width: 100%; height: 100%;
+  -webkit-mask-image: linear-gradient(180deg, #000 70%, transparent 100%); mask-image: linear-gradient(180deg, #000 70%, transparent 100%); }
+
+/* retrato com proporção fixa, para alinhar órbita e leitura do rosto */
+.hero-legends.solo .legend-r .portrait { position: absolute; right: 0; top: 0; height: 100%; aspect-ratio: 712 / 924; max-width: 100%; }
+.hero-legends.solo .legend-r .portrait > img { position: relative; z-index: 1; width: 100%; height: 100%; object-fit: contain; object-position: right top; }
+
+/* órbitas finas atrás da cabeça */
+.orbit-ring { position: absolute; left: 50%; top: 34%; width: 112%; aspect-ratio: 1; border-radius: 50%; z-index: 0;
+  border: 1px solid rgba(214, 178, 110, .2); transform: translate(-50%, -50%); animation: orbitSpin 46s linear infinite; }
+.orbit-ring i { position: absolute; top: -3.5px; left: calc(50% - 3.5px); width: 7px; height: 7px; border-radius: 50%; background: #f3dca4;
+  box-shadow: 0 0 10px 2px rgba(214, 178, 110, .75), 0 0 28px 6px rgba(214, 178, 110, .25); }
+.orbit-ring.r2 { width: 88%; border-style: dashed; border-color: rgba(214, 178, 110, .12); animation-duration: 80s; animation-direction: reverse; }
+@keyframes orbitSpin { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* leitura estilo Face ID */
+.face-scan { position: absolute; z-index: 2; left: 23%; right: 22%; top: 13%; height: 57%; pointer-events: none; }
+.fc { position: absolute; width: 26px; height: 26px; border-color: rgba(243, 220, 164, .85); border-style: solid; border-width: 0; opacity: 0;
+  filter: drop-shadow(0 0 6px rgba(214, 178, 110, .55)); }
+.fc.tl { left: 0; top: 0; border-top-width: 1.5px; border-left-width: 1.5px; border-top-left-radius: 10px; }
+.fc.tr { right: 0; top: 0; border-top-width: 1.5px; border-right-width: 1.5px; border-top-right-radius: 10px; }
+.fc.bl { left: 0; bottom: 0; border-bottom-width: 1.5px; border-left-width: 1.5px; border-bottom-left-radius: 10px; }
+.fc.br { right: 0; bottom: 0; border-bottom-width: 1.5px; border-right-width: 1.5px; border-bottom-right-radius: 10px; }
+.hero-fx.go .fc { animation: fcIn 1.1s cubic-bezier(.2, .7, .1, 1) 1.2s forwards, fcBreath 7s ease-in-out 2.4s infinite; }
+.hero-fx.go .fc.tl { --fx: -14px; --fy: -14px; } .hero-fx.go .fc.tr { --fx: 14px; --fy: -14px; }
+.hero-fx.go .fc.bl { --fx: -14px; --fy: 14px; } .hero-fx.go .fc.br { --fx: 14px; --fy: 14px; }
+@keyframes fcIn { from { opacity: 0; transform: translate(var(--fx), var(--fy)) scale(.7); } to { opacity: .9; transform: none; } }
+@keyframes fcBreath { 0%, 100% { opacity: .9; } 50% { opacity: .35; } }
+.scan-line { position: absolute; left: -4%; right: -4%; top: 0; height: 1.5px; opacity: 0;
+  background: linear-gradient(90deg, transparent, rgba(243, 220, 164, .95) 20%, #fff7e0 50%, rgba(243, 220, 164, .95) 80%, transparent);
+  box-shadow: 0 0 14px 2px rgba(214, 178, 110, .55); }
+.scan-line::before { content: ''; position: absolute; left: 6%; right: 6%; bottom: 100%; height: 70px;
+  background: linear-gradient(0deg, rgba(214, 178, 110, .16), transparent); }
+.hero-fx.go .scan-line { animation: scanY 8s cubic-bezier(.45, 0, .25, 1) 2s infinite; }
+@keyframes scanY { 0% { top: 0; opacity: 0; } 4% { opacity: 1; } 26% { top: 100%; opacity: 1; } 30%, 100% { top: 100%; opacity: 0; } }
+
+/* entrada do texto em sequência */
+.hero-fx .hx { opacity: 0; transform: translateY(18px); filter: blur(6px); }
+.hero-fx.go .hx { opacity: 1; transform: none; filter: blur(0);
+  transition: opacity 1s cubic-bezier(.2, .7, .1, 1) calc(var(--d) * .11s + .15s), transform 1.1s cubic-bezier(.2, .7, .1, 1) calc(var(--d) * .11s + .15s), filter 1s ease calc(var(--d) * .11s + .15s); }
+.hero-fx h1 .hl { display: block; overflow: hidden; padding: 0 .04em .1em 0; margin-bottom: -.1em; }
+.hero-fx h1 .hl > .hx { display: inline-block; transform: translateY(105%); filter: none; }
+.hero-fx.go h1 .hl > .hx { transform: none; transition-duration: 1.2s; }
+
+/* brilho dourado passando em “merece.” */
+.shimmer { background: linear-gradient(110deg, #a07733 0%, #d6b26e 32%, #fff4d2 50%, #d6b26e 68%, #a07733 100%); background-size: 260% 100%;
+  background-position: 100% 0; -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-fx.go .shimmer { animation: shimmer 7s ease-in-out 2.4s infinite; }
+@keyframes shimmer { 0% { background-position: 100% 0; } 35%, 100% { background-position: -60% 0; } }
+
+/* símbolo e 24/7 com respiração suave */
+.hero-fx.go .apple-mark { animation: markGlow 6s ease-in-out 2s infinite; }
+@keyframes markGlow { 50% { filter: drop-shadow(0 0 22px rgba(214, 178, 110, .7)); } }
+.stat-247 b::after { content: ''; display: inline-block; width: 6px; height: 6px; margin-left: 8px; vertical-align: middle; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 10px var(--ok); animation: livePulse 2s ease-in-out infinite; }
+@keyframes livePulse { 50% { opacity: .35; } }
+
+@media (max-width: 640px) {
+  .hero-legends.solo .legend-r .portrait { position: relative; height: auto; width: 100%; }
+  .hero-legends.solo .legend-r .portrait > img { height: auto; }
+  .fc { width: 18px; height: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-fx .hx, .hero-fx h1 .hl > .hx { opacity: 1 !important; transform: none !important; filter: none !important; }
+  .fc { opacity: .8 !important; animation: none !important; }
+  .scan-line, .orbit-ring, .shimmer, .apple-mark, .stat-247 b::after { animation: none !important; }
+}
+
+/* retrato encostado no canto direito (rosto cortado pela borda) */
+.hero-legends.solo .legend-r.edge { right: 0; top: 0; bottom: 0; height: 100%; width: auto; opacity: 1; filter: contrast(1.04);
+  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 99%), linear-gradient(to right, transparent 4%, #000 34%);
+  mask-image: linear-gradient(to bottom, #000 72%, transparent 99%), linear-gradient(to right, transparent 4%, #000 34%); }
+.hero-legends.solo .legend-r.edge img { height: 100%; width: auto; max-width: none; object-fit: contain; }
+.hero-legends.solo .legend-r.edge::before { inset: 18% -10% 30% 45%; background: radial-gradient(circle, rgba(214,178,110,.14), transparent 62%); }
+@media (max-width: 1100px) and (min-width: 641px) { .hero-legends.solo .legend-r.edge { opacity: .9; } }
+@media (max-width: 640px) {
+  .hero-legends.solo .legend-r.edge { position: relative; width: 88vw; height: auto; margin: 0 0 -16vw auto;
+    -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 98%), linear-gradient(to right, transparent 0%, #000 30%);
+    mask-image: linear-gradient(to bottom, #000 62%, transparent 98%), linear-gradient(to right, transparent 0%, #000 30%); }
+  .hero-legends.solo .legend-r.edge img { width: 100%; height: auto; }
+}
+/* retrato com fundo preto de estúdio: o preto some no fundo do topo (sem "caixa") */
+.hero-legends.solo .legend-r.edge img { mix-blend-mode: lighten; }

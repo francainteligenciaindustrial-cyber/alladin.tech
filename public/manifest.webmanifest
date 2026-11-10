@@ -1,0 +1,23 @@
+{
+  "name": "Aladdin Tech — Referência em Upgrade",
+  "short_name": "Aladdin Tech",
+  "description": "iPhone, Mac, iPad, Apple Watch, JBL e PlayStation com procedência, garantia e atendimento especializado.",
+  "lang": "pt-BR",
+  "start_url": "/?app=1",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#09090a",
+  "theme_color": "#09090a",
+  "categories": ["shopping", "lifestyle"],
+  "icons": [
+    { "src": "/img/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/img/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Ofertas", "url": "/ofertas", "icons": [{ "src": "/img/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Minha conta", "url": "/minha-conta", "icons": [{ "src": "/img/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Avaliar meu usado", "url": "/upgrade", "icons": [{ "src": "/img/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

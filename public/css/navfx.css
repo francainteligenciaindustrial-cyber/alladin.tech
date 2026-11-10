@@ -1,0 +1,12 @@
+/* menu do topo deslizando para a esquerda (pausa com o mouse) */
+.nav { flex: 1; min-width: 0; overflow: hidden; margin: 0 24px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent); }
+.nav-track { display: flex; width: max-content; animation: navSlide 38s linear infinite; }
+.nav:hover .nav-track, .nav:focus-within .nav-track { animation-play-state: paused; }
+.nav-set { display: flex; gap: 2px; padding-right: 2px; flex-shrink: 0; }
+@keyframes navSlide { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { .nav-track { animation: none; } .nav { overflow-x: auto; scrollbar-width: none; } }
+
+/* sem a linha que descia pelo rosto */
+.scan-line { display: none !important; }

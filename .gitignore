@@ -1,0 +1,17 @@
+# Dependências: a hospedagem instala sozinha com "npm install" (nunca subir)
+node_modules/
+
+# Banco de dados, backups e arquivos enviados pelos clientes/equipe:
+# contêm senhas criptografadas, dados pessoais e configurações da loja.
+# Vão direto para o disco do servidor, nunca para o GitHub.
+data/
+public/uploads/
+
+# Segredos e logs
+.env
+.env.*
+*.log
+
+# Material bruto (as versões usadas no site já estão em public/img)
+fotos-para-o-site/
+WhatsApp Image*.jpeg

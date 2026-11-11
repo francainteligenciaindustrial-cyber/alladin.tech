@@ -1,6 +1,6 @@
 /* Aladdin Tech — servidor da loja (API + arquivos estáticos)
  * Banco: SQLite embutido do Node (node:sqlite), arquivo em ./data/loja.db
- *        ou Turso na nuvem (Vercel) — ver db.js
+ *        ou Supabase (Postgres) na nuvem (Vercel) — ver db.js e pg-compat.js
  */
 // na Vercel o relógio é UTC: datas e horários seguem o fuso da loja (Cuiabá, UTC−4)
 if (process.env.VERCEL && !process.env.TZ_KEEP) process.env.TZ = process.env.STORE_TZ || 'America/Cuiaba';
@@ -1756,7 +1756,7 @@ app.get('/api/admin/emails', auth('coupons'), (req, res) => {
   res.json({ ready: mailer.ready(),
     audience: db.prepare('SELECT COUNT(*) n FROM customers WHERE marketing=1').get().n,
     audience_verified: db.prepare('SELECT COUNT(*) n FROM customers WHERE marketing=1 AND email_verified=1').get().n,
-    alerts: db.prepare(`SELECT p.name, a.type, COUNT(*) n FROM price_alerts a JOIN products p ON p.id=a.product_id WHERE a.active=1 GROUP BY a.product_id, a.type ORDER BY n DESC LIMIT 20`).all(),
+    alerts: db.prepare(`SELECT p.name, a.type, COUNT(*) n FROM price_alerts a JOIN products p ON p.id=a.product_id WHERE a.active=1 GROUP BY p.id, p.name, a.type ORDER BY n DESC LIMIT 20`).all(),
     list: db.prepare('SELECT id,to_addr,subject,kind,status,error,created_at FROM emails ORDER BY id DESC LIMIT 300').all() });
 });
 app.get('/api/admin/emails/:id/preview', auth('coupons'), (req, res) => {
@@ -2363,7 +2363,7 @@ function ranking(month, { all = false } = {}) {
   const metric = getSettings().ranking_metric === 'vendas' ? 'n' : 'v';
   const rows = db.prepare(`SELECT u.id, u.name, u.title, ${STAFF_PHOTO} photo, u.goal, u.active, u.ref_code,
       COUNT(o.id) n, COALESCE(SUM(o.total),0) v,
-      SUM(CASE WHEN o.channel='loja' THEN 1 ELSE 0 END) n_loja, SUM(CASE WHEN o.channel='loja' THEN 0 ELSE 1 END) * (COUNT(o.id)>0) n_site
+      SUM(CASE WHEN o.channel='loja' THEN 1 ELSE 0 END) n_loja, SUM(CASE WHEN o.channel='loja' THEN 0 ELSE 1 END) * (CASE WHEN COUNT(o.id)>0 THEN 1 ELSE 0 END) n_site
     FROM users u LEFT JOIN orders o ON o.seller_id=u.id AND o.status IN ${COUNTED} AND substr(o.created_at,1,7)=?
     WHERE u.in_ranking=1 OR o.id IS NOT NULL GROUP BY u.id`).all(month)
     .filter((r) => all ? (r.active || r.n) : r.active)
@@ -2558,7 +2558,7 @@ app.get('/api/admin/backups', auth(), ownerOnly2, (req, res) => {
     .map((n) => { const st = fs.statSync(path.join(BACKUP_DIR, n)); return { name: n, size: st.size, created_at: st.mtime.toISOString() }; }));
 });
 app.post('/api/admin/backups', auth(), ownerOnly2, limit('backup-now', 10, 3600000), (req, res) => {
-  if (store.REMOTE_DB) return res.json({ ok: true, name: 'nuvem', note: 'Na nuvem o Turso guarda o histórico automaticamente. Use Baixar para levar uma cópia completa.' });
+  if (store.REMOTE_DB) return res.json({ ok: true, name: 'nuvem', note: 'Na nuvem o Supabase guarda cópias diárias automaticamente. Use Baixar para levar uma cópia completa.' });
   try { const n = backupDb(true); audit(req, 'backup_manual', n || ''); res.json({ ok: true, name: n }); } catch (e) { res.status(500).json({ error: 'Falha no backup: ' + e.message }); }
 });
 app.get('/api/admin/backups/:name', auth(), ownerOnly2, (req, res) => {

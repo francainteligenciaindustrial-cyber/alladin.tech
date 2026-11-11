@@ -1,10 +1,11 @@
 /* Aladdin Tech — acesso ao banco de dados
  *
  * Local (computador / servidor próprio): SQLite do Node, arquivo em ./data/loja.db
- * Nuvem (Vercel): Turso (o mesmo SQLite, hospedado) — ativado pela variável TURSO_DATABASE_URL
+ * Nuvem (Vercel): Supabase (Postgres) — ativado por POSTGRES_URL; o SQL é traduzido em pg-compat.js
+ *                (ou Turso, o SQLite hospedado — TURSO_DATABASE_URL)
  *
  * O sistema inteiro usa a interface síncrona db.prepare(sql).get/all/run e db.exec(sql).
- * Na nuvem, uma "ponte" mantém essa mesma interface: um worker conversa com o Turso
+ * Na nuvem, uma "ponte" mantém essa mesma interface: um worker conversa com o banco
  * (que é assíncrono) e a linha principal espera a resposta (Atomics.wait).
  * Assim as ~520 consultas do sistema funcionam sem reescrita.
  *
@@ -12,7 +13,9 @@
  */
 const path = require('path');
 
-const REMOTE_DB = !!process.env.TURSO_DATABASE_URL;
+// Supabase: a integração da Vercel cria POSTGRES_URL (conexão pelo pooler). Também aceita DATABASE_URL / SUPABASE_DB_URL.
+const PG_URL = process.env.SUPABASE_DB_URL || process.env.POSTGRES_URL || process.env.DATABASE_URL || '';
+const REMOTE_DB = !!(PG_URL || process.env.TURSO_DATABASE_URL);
 const REMOTE_FILES = !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID || process.env.BLOB_MOCK_DIR);
 const SERVERLESS = !!process.env.VERCEL;
 
@@ -25,7 +28,7 @@ function bridge() {
   const worker = new Worker(require.resolve('./db-worker.js'), {
     workerData: {
       sab, port: port2,
-      url: process.env.TURSO_DATABASE_URL || '', token: process.env.TURSO_AUTH_TOKEN || '',
+      url: process.env.TURSO_DATABASE_URL || '', token: process.env.TURSO_AUTH_TOKEN || '', pgUrl: PG_URL,
       offset: process.env.STORE_UTC_OFFSET || '-4 hours',            // Mato Grosso (Cuiabá): UTC−4, sem horário de verão
       blobToken: process.env.BLOB_READ_WRITE_TOKEN || '', blobMockDir: process.env.BLOB_MOCK_DIR || ''
     },
@@ -78,4 +81,4 @@ const blobPut = (pathname, buf, contentType) => bridge()({ op: 'blobPut', pathna
 const blobDel = (url) => { try { bridge()({ op: 'blobDel', url, ...auth() }); } catch (e) { console.error('blob del', e.message); } };
 const BLOB_URL_RE = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/uploads\/[\w\-./]+$/i;
 
-module.exports = { openDb, REMOTE_DB, REMOTE_FILES, SERVERLESS, blobPut, blobDel, setOidc, BLOB_URL_RE, bridge };
+module.exports = { openDb, PG_URL, REMOTE_DB, REMOTE_FILES, SERVERLESS, blobPut, blobDel, setOidc, BLOB_URL_RE, bridge };

@@ -95,29 +95,29 @@ Segurança: chaves secretas sempre mascaradas no painel e chaves exclusivas do D
 | Vendidos e notas | “**+N vendidos**” em faixas (+5, +10, +25, +50, +100…), como Shopee e Mercado Livre. Nota com estrelas e número de avaliações em cada card e na página do produto. |
 | Vendas antes do site | Campo **Vendas antes do site** no cadastro do produto, para incluir o histórico real da loja. |
 
-## Publicar na Vercel (Turso + Vercel Blob)
+## Publicar na Vercel (Supabase + Vercel Blob)
 
 O mesmo código roda em dois modos:
 
 | Modo | Banco | Fotos | Tarefas automáticas |
 |---|---|---|---|
 | Computador ou servidor próprio (`npm start`) | `data/loja.db` (SQLite do Node) | `public/uploads` | `setInterval` |
-| Vercel (variável `VERCEL`, definida pela própria Vercel) | Turso (`TURSO_DATABASE_URL`) | Vercel Blob (`BLOB_READ_WRITE_TOKEN`) | A cada acesso, em segundo plano, e pelo agendamento diário em `/api/cron` |
+| Vercel (variável `VERCEL`, definida pela própria Vercel) | Supabase / Postgres (`POSTGRES_URL`) | Vercel Blob | A cada acesso, em segundo plano, e pelo agendamento diário em `/api/cron` |
 
-**Como funciona:** `db.js` mantém a interface síncrona do SQLite (`db.prepare().get/all/run`). Na nuvem, um *worker* (`db-worker.js`) executa as consultas no Turso e a linha principal aguarda a resposta. As consultas usam SQL compatível com o SQLite 3.45 do Turso.
+**Como funciona:** `db.js` mantém a interface síncrona do SQLite (`db.prepare().get/all/run`). Na nuvem, um *worker* (`db-worker.js`) executa as consultas no Supabase e a linha principal aguarda a resposta. `pg-compat.js` traduz o SQL de cada consulta para o Postgres: parâmetros, `LIKE`, datas (`datetime`, `date` e `strftime` são recriadas como funções no banco), `INSERT OR IGNORE`, `MAX(a,b)` e os tipos das tabelas. Também aceita Turso (`TURSO_DATABASE_URL`) no lugar do Supabase.
 
 **Passo a passo:**
 1. Na Vercel, importe o repositório do GitHub (*Add New → Project*).
-2. Em *Storage*, crie e conecte ao projeto:
-   - **Turso** (Marketplace), que cria `TURSO_DATABASE_URL` e `TURSO_AUTH_TOKEN`.
-   - **Blob**, que cria `BLOB_READ_WRITE_TOKEN`.
+2. Em *Storage*, crie e conecte ao projeto, marcando os 3 ambientes:
+   - **Supabase** (Marketplace), que cria `POSTGRES_URL` e as outras chaves.
+   - **Blob**.
 3. Em *Settings → Environment Variables*, adicione:
    - `CRON_SECRET`: uma senha longa qualquer, usada pelo agendamento diário.
    - `PUBLIC_URL`: o endereço do site, por exemplo `https://aladdintech.com.br`.
    - `ADMIN_INITIAL_PASSWORD`: opcional. Só é usada se o banco estiver vazio. Sem ela, a senha provisória do `admin` aparece em *Logs*.
 4. Leve os dados do computador para a nuvem: produtos, equipe, configurações e fotos.
    ```
-   $env:TURSO_DATABASE_URL="libsql://..."; $env:TURSO_AUTH_TOKEN="..."; $env:BLOB_READ_WRITE_TOKEN="vercel_blob_rw_..."
+   npx vercel env pull .env.local --environment=production
    node tools/migrar-para-nuvem.js
    ```
    A ferramenta só roda num banco da nuvem vazio. Para copiar de novo, use `--substituir`.
@@ -126,4 +126,4 @@ O mesmo código roda em dois modos:
 **Observações:**
 - O plano Hobby da Vercel é só para uso pessoal, não comercial. Uma loja precisa do plano Pro.
 - No plano Hobby, o agendamento roda 1 vez por dia. As demais tarefas rodam conforme o site recebe visitas.
-- **Backups:** o Turso guarda o histórico do banco. Em *Painel → Segurança*, o Dono baixa uma cópia completa (JSON) na hora.
+- **Backups:** o Supabase faz cópias diárias do banco. Em *Painel → Segurança*, o Dono baixa uma cópia completa (JSON) na hora.

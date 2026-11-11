@@ -5,7 +5,8 @@ node_modules/
 # contêm senhas criptografadas, dados pessoais e configurações da loja.
 # Vão direto para o disco do servidor, nunca para o GitHub.
 data/
-public/uploads/
+public/uploads/*
+!public/uploads/loja/
 
 # Segredos e logs
 .env
